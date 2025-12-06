@@ -28,14 +28,13 @@ func newServerSession(config *reality.ClientConfig, logger logrus.FieldLogger) *
 }
 
 func (s *serverSession) connectForever() {
-
 	for {
 		s.connect()
 		s.logger.Infoln("sleep 5s")
 		time.Sleep(time.Second * 5)
 	}
-
 }
+
 func (s *serverSession) connect() {
 	logger := s.logger
 	client, err := reality.NewClient(context.Background(), s.config)
@@ -57,7 +56,6 @@ func (s *serverSession) connect() {
 }
 
 func (s *serverSession) openSessionStream() (*yamux.Stream, error) {
-
 	if s.session != nil {
 		stream, err := s.session.OpenStream()
 		if err != nil {
@@ -76,19 +74,33 @@ func main() {
 		println(err.Error())
 		return
 	}
+
 	logger := reality.GetLogger(config.Debug)
+
+	// ----------- IPv4 DNS 修复 -------------
+	net.DefaultResolver.PreferGo = true
+	net.DefaultResolver.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		d := net.Dialer{}
+		// 强制使用 IPv4 DNS 解析 Google 公网 DNS
+		return d.DialContext(ctx, "udp4", "8.8.8.8:53")
+	}
+	// ----------- IPv4 DNS 修复结束 -------------
+
 	addr := flag.String("l", "127.0.0.1:61080", "socks5 listen address")
 	id := flag.Uint("i", 0, "id")
 	flag.Parse()
 	logger.Infof("server addr: %s, sni: %s, id: %d", config.ServerAddr, config.SNI, byte(*id))
 	config.OverlayData = cmd.NewShortID(false, byte(*id))
+
 	l, err := net.Listen("tcp", *addr)
 	if err != nil {
 		logger.Panic(err)
 	}
 	logger.Infof("listen %s", *addr)
+
 	s := newServerSession(config, logger)
 	go s.connectForever()
+
 	for {
 		conn, err := l.Accept()
 		if err != nil {
